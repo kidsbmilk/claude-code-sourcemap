@@ -1,3 +1,4 @@
+// AI 伴侣精灵
 export const RARITIES = [
   'common',
   'uncommon',

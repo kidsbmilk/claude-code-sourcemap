@@ -1,3 +1,4 @@
+// 技能目录扫描
 import { realpath } from 'fs/promises'
 import ignore from 'ignore'
 import memoize from 'lodash-es/memoize.js'

@@ -553,6 +553,8 @@ function getRestrictionsFromCache():
  * Fails open - if fetch fails, continues without restrictions
  * Also starts background polling to pick up changes mid-session
  */
+// 在程序启动时去服务器获取“限制规则”（比如企业规定的额度、权限等）。为了不影响使用，如果网络不好导致规则没拉下来，
+// 程序就会默认“不限制”（Fail Open），让用户自由运行。同时，它还会后台监控规则的变更，一旦管理员调整了限制，程序能立刻生效。
 export async function loadPolicyLimits(): Promise<void> {
   if (isPolicyLimitsEligible() && !loadingCompletePromise) {
     loadingCompletePromise = new Promise(resolve => {

@@ -1,3 +1,4 @@
+// CCR WebSocket 会话
 import { randomUUID } from 'crypto'
 import { getOauthConfig } from '../constants/oauth.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'

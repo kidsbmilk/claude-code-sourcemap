@@ -1,3 +1,5 @@
+// 会话级持久对象
+// 消息历史 / token 追踪
 import { feature } from 'bun:bundle'
 import type { ContentBlockParam } from '@anthropic-ai/sdk/resources/messages.mjs'
 import { randomUUID } from 'crypto'

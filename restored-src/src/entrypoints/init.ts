@@ -54,6 +54,7 @@ import { setShellIfWindows } from '../utils/windowsPaths.js'
 // Track if telemetry has been initialized to prevent double initialization
 let telemetryInitialized = false
 
+// 认证 / 配置 / 代理初始化
 export const init = memoize(async (): Promise<void> => {
   const initStartTime = Date.now()
   logForDiagnosticsNoPII('info', 'init_started')

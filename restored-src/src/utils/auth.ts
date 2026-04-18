@@ -1,3 +1,4 @@
+// 7 级认证优先级链
 import chalk from 'chalk'
 import { exec } from 'child_process'
 import { execa } from 'execa'

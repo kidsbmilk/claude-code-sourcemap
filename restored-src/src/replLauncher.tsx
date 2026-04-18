@@ -9,6 +9,7 @@ type AppWrapperProps = {
   stats?: StatsStore;
   initialState: AppState;
 };
+// Ink REPL 主循环
 export async function launchRepl(root: Root, appProps: AppWrapperProps, replProps: REPLProps, renderAndRun: (root: Root, element: React.ReactNode) => Promise<void>): Promise<void> {
   const {
     App

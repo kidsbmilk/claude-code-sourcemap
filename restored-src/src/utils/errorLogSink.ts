@@ -10,6 +10,11 @@
  * log.ts has NO heavy dependencies - events are queued until this sink is attached.
  */
 
+/*
+作为一个专门负责“写硬盘”的重型模块，它被刻意从核心日志系统中剥离出来。
+这样做是为了让主程序启动时更轻快（不用加载大文件），同时避免了代码循环引用的问题——主程序只负责暂存日志，等这个重型模块准备好后，再把积压的日志一次性写入磁盘。
+*/
+
 import axios from 'axios'
 import { dirname, join } from 'path'
 import { getSessionId } from '../bootstrap/state.js'

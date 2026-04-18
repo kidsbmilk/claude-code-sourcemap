@@ -106,6 +106,8 @@ export function initializeAnalyticsGates(): void {
  *
  * Idempotent: safe to call multiple times (subsequent calls are no-ops).
  */
+// 在程序启动时，负责把“数据收集器”（Analytics Backend）接通。如果在这之前程序已经产生了一些行为数据，它们会被先暂存在队列里，
+// 等这个模块一启动，就会自动把这些积压的数据补发出去。而且这个操作很安全，就算不小心重复执行也不会出错。
 export function initializeAnalyticsSink(): void {
   attachAnalyticsSink({
     logEvent: logEventImpl,

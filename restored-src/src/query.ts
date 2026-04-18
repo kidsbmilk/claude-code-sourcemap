@@ -1,3 +1,5 @@
+// 查询循环内核
+// 四级压缩流水线
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import type {
   ToolResultBlockParam,

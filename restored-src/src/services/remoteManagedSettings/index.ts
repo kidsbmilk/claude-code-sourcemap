@@ -511,6 +511,8 @@ async function fetchAndLoadRemoteManagedSettings(): Promise<SettingsJson | null>
  * waitForRemoteManagedSettingsToLoad() to ensure they don't initialize
  * until remote settings have been fetched.
  */
+// 在程序启动时去云端拉取最新的配置，并且开启一个后台监控（轮询），以便在程序运行过程中随时响应配置的变更。
+// 最关键的是，它提供了一个“信号灯”，让其他模块可以知道“配置还没下完，请稍等”，从而避免因为数据没到位而报错。
 export async function loadRemoteManagedSettings(): Promise<void> {
   // Set up the promise for other systems to wait on
   // Only if the user is eligible for remote settings AND promise not already set up

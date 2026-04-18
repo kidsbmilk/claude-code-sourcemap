@@ -1,3 +1,4 @@
+// 注册中心
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import addDir from './commands/add-dir/index.js'
 import autofixPr from './commands/autofix-pr/index.js'
@@ -255,6 +256,7 @@ export const INTERNAL_ONLY_COMMANDS = [
 
 // Declared as a function so that we don't run this until getCommands is called,
 // since underlying functions read from config, which can't be read at module initialization time
+// 命令
 const COMMANDS = memoize((): Command[] => [
   addDir,
   advisor,
@@ -350,6 +352,7 @@ export const builtInCommandNames = memoize(
     new Set(COMMANDS().flatMap(_ => [_.name, ...(_.aliases ?? [])])),
 )
 
+// 读取技能
 async function getSkills(cwd: string): Promise<{
   skillDirCommands: Command[]
   pluginSkills: Command[]

@@ -29,6 +29,7 @@ if (feature('ABLATION_BASELINE') && process.env.CLAUDE_CODE_ABLATION_BASELINE) {
  * Bootstrap entrypoint - checks for special flags before loading the full CLI.
  * All imports are dynamic to minimize module evaluation for fast paths.
  * Fast-path for --version has zero imports beyond this file.
+ * 进程入口
  */
 async function main(): Promise<void> {
   const args = process.argv.slice(2);

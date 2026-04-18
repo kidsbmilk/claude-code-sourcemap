@@ -1,3 +1,4 @@
+// SSE 远程 Agent
 import axios from 'axios'
 import { getOauthConfig } from '../constants/oauth.js'
 import type { SDKMessage } from '../entrypoints/agentSdkTypes.js'

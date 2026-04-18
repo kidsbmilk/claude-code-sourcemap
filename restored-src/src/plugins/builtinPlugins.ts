@@ -1,3 +1,4 @@
+// 内置插件注册
 /**
  * Built-in Plugin Registry
  *

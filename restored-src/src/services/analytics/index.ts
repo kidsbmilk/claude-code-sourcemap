@@ -92,6 +92,8 @@ let sink: AnalyticsSink | null = null
  * calling from both the preAction hook (for subcommands) and setup() (for
  * the default command) without coordination.
  */
+// 给程序装上“数据记录员”（Analytics Sink），让它开始接收所有的事件信息。
+// 为了不影响程序启动速度，积压的旧数据会在后台悄悄处理，而不是卡住主流程。而且这个操作很安全，不管是在主程序还是子命令里调用，就算重复执行也不会出错。
 export function attachAnalyticsSink(newSink: AnalyticsSink): void {
   if (sink !== null) {
     return

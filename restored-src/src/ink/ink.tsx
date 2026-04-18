@@ -1,3 +1,5 @@
+// React+Ink 渲染引擎
+// Yoga Flexbox 布局
 import autoBind from 'auto-bind';
 import { closeSync, constants as fsConstants, openSync, readSync, writeSync } from 'fs';
 import noop from 'lodash-es/noop.js';
