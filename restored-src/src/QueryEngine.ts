@@ -183,6 +183,10 @@ export type QueryEngineConfig = {
  * turn within the same conversation. State (messages, file cache, usage, etc.)
  * persists across turns.
  */
+// QueryEngine 不再只是一个简单的函数，而是一个负责管理整个对话过程的“类”。
+// 它的核心任务是把复杂的对话逻辑（比如发送请求、处理响应）从之前的 ask() 函数中剥离出来，封装成一个独立的组件。
+// 这样，无论是后台脚本调用还是未来的命令行界面，都可以复用同一套逻辑。
+// 你可以把它想象成一场会议的记录员：它会保存所有的聊天记录、文件缓存和使用情况，确保在多轮对话中，上下文不会丢失。
 export class QueryEngine {
   private config: QueryEngineConfig
   private mutableMessages: Message[]
@@ -196,6 +200,37 @@ export class QueryEngine {
   // processUserInputContext rebuilds inside submitMessage, but is cleared
   // at the start of each submitMessage to avoid unbounded growth across
   // many turns in SDK mode.
+  // 一个“用完即焚”的临时追踪机制。它专门用来记录当前这一轮对话里有没有“新发现”，为了扛过函数内部的两次上下文重建，它得暂时稳住别丢数据；
+  // 但为了防止在 SDK 模式下无限占用内存，一旦这轮结束，它就得立刻被清空。
+
+  // 这是一个专门用来记录“当前这一轮对话中发现了哪些新技能”的临时记事本。
+  // 为了防止在提交消息（submitMessage）的过程中因为界面重建导致数据丢失，它必须在内存中短暂保持一会儿；
+  // 但为了节省资源，一旦这轮对话结束，这个记事本就会被立刻清空，绝不把记录带到下一轮去。
+
+  /*
+  为啥有两次上下文重建？
+  根据这段代码注释和 Claude Code 的架构逻辑，这里的“两次重建”并不是指系统出了故障或重复劳动，而是 submitMessage（提交消息）这个函数在处理用户输入时，为了安全和准确性必须经历的两个关键处理阶段。
+  你可以把 processUserInputContext 理解为一个包含所有对话信息的“记事本”。为了让 AI 做出正确的回答，这个记事本需要在这一轮对话中被修改两次：
+  🛠️ 第一次重建：预处理与清洗
+  当你的输入（比如一段代码或一个命令）进入系统时，系统不能直接把原始文本扔给 AI。它需要先进行一轮上下文更新：
+  动作：解析你的指令、处理附件、识别 Slash Commands（如 /edit）、检查权限等。
+  目的：把用户的“原始输入”转化为系统能理解的“结构化数据”。
+  结果：此时，“记事本”被更新了一次，记录了“用户想做什么”。
+  🔍 第二次重建：注入技能发现状态
+  这就是你刚才问的那个注释提到的关键点。在预处理之后，系统可能通过静态分析发现了一些新的工具或技能（Skill Discovery）。
+  动作：系统需要把这些“新发现的技能”信息，动态地塞进上下文中，告诉 AI：“嘿，刚才分析了一下，你现在可以用这个新工具了。”
+  目的：确保 AI 在生成回复时，拥有最新的工具使用权限和能力信息。
+  结果：此时，“记事本”被更新了第二次，记录了“当前可用什么新能力”。
+  💡 为什么要强调“必须持久化”？
+  注释中提到 Must persist across... rebuilds，是因为在代码实现上，这两个阶段可能会触发 React 或内部状态的重新渲染/重新计算。
+  如果那个记录“技能发现”的变量（discoveredSkillNames）只存在于局部作用域，那么在第一次重建后，它可能就丢失了。
+  所以，开发者特意强调：这个变量必须“挺过”这两次重建过程，直到这一轮对话真正结束。
+  总结一下：
+  这就像厨师做菜。
+  第一次重建：看菜单（用户输入），确认客人点了什么菜，把食材准备好。
+  第二次重建：突然发现冰箱里刚送来了一种新调料（技能发现），于是把这个新信息也写进菜谱里，决定这道菜要不要加一点。
+  虽然都是改菜谱，但发生的时机和目的不同，所以会有“两次”。
+  */
   private discoveredSkillNames = new Set<string>()
   private loadedNestedMemoryPaths = new Set<string>()
 
@@ -208,6 +243,9 @@ export class QueryEngine {
     this.totalUsage = EMPTY_USAGE
   }
 
+  // 处理用户输入
+  // 预写磁盘（崩溃恢复）
+  // 组装系统提示词
   async *submitMessage(
     prompt: string | ContentBlockParam[],
     options?: { uuid?: string; isMeta?: boolean },
@@ -343,6 +381,9 @@ export class QueryEngine {
       // the result.  The second processUserInputContext below (after
       // slash-command processing) keeps the no-op — nothing else calls
       // setMessages past that point.
+      // 当遇到像 /force-snip 这种会直接修改消息列表的特殊指令时，代码必须同时照顾到两种运行模式——在交互模式下，它更新全局状态（AppState）；
+      // 而在打印模式下，它则直接修改内存中的可变数组（mutableMessages）。之所以这么做，是为了确保后续的查询循环能读取到最新的消息列表。
+      // 而且注释还特意强调，经过前面的处理后，后面那一次上下文重建就纯粹是走个过场了，因为后续流程不会再动消息列表。
       setMessages: fn => {
         this.mutableMessages = fn(this.mutableMessages)
       },
@@ -410,12 +451,12 @@ export class QueryEngine {
     }
 
     const {
-      messages: messagesFromUserInput,
+      messages: messagesFromUserInput, // 解构结果，把 messages 属性值赋值给 messagesFromUserInput
       shouldQuery,
       allowedTools,
       model: modelFromUserInput,
       resultText,
-    } = await processUserInput({
+    } = await processUserInput({ // 处理用户输入
       input: prompt,
       mode: 'prompt',
       setToolJSX: () => {},
@@ -491,6 +532,8 @@ export class QueryEngine {
 
     // Recreate after processing the prompt to pick up updated messages and
     // model (from slash commands).
+    // 因为刚才处理用户输入（特别是像 /model 这种指令）时，可能已经偷偷修改了对话历史或者切换了 AI 模型。
+    // 所以，为了保证后续流程拿到的是最新鲜的数据，我们必须在这里重新“捏”一个新的上下文对象，把那些变更都同步进去。
     processUserInputContext = {
       messages,
       setMessages: () => {},
@@ -533,6 +576,8 @@ export class QueryEngine {
     // ref-tracked plugins. CCR populates the cache via CLAUDE_CODE_SYNC_PLUGIN_INSTALL
     // (headlessPluginInstall) or CLAUDE_CODE_PLUGIN_SEED_DIR before this runs;
     // SDK callers that need fresh source can call /reload-plugins.
+    // 为了保证 SDK 或无界面模式启动时不卡顿，系统在这里严禁联网检查插件更新，而是强制直接使用本地缓存的版本。
+    // 至于缓存怎么来的？那是上游流程（CCR）提前准备好的；如果用户真的想要最新版，得手动敲命令去刷新。
     const [skills, { enabled: enabledPlugins }] = await Promise.all([
       getSlashCommandToolSkills(getCwd()),
       loadAllPluginsCacheOnly(),
@@ -1185,6 +1230,8 @@ export class QueryEngine {
  *
  * Convenience wrapper around QueryEngine for one-shot usage.
  */
+// 这是一个为了方便而设计的“一次性”函数。它把复杂的查询引擎（QueryEngine）包装起来，让你只需传给它一段话，它就能直接发给 Claude 并拿回结果。
+// 整个过程是完全自动化的“黑盒”模式——它不会像聊天机器人那样停下来问你“我可以执行这个操作吗？”或者“还需要我做什么？”，而是发完即走，拿到答案就结束。
 export async function* ask({
   commands,
   prompt,

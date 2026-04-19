@@ -880,6 +880,7 @@ async function getInputPrompt(prompt: string, inputFormat: 'text' | 'stream-json
     if (inputFormat === 'stream-json') {
       return process.stdin;
     }
+    // process 是 Node.js 的一个核心模块（内置库）
     process.stdin.setEncoding('utf8');
     let data = '';
     const onData = (chunk: string) => {
@@ -891,6 +892,8 @@ async function getInputPrompt(prompt: string, inputFormat: 'text' | 'stream-json
     // without explicit stdin handling). 3s covers slow producers like curl,
     // jq on large files, python with import overhead. The warning makes
     // silent data loss visible for the rare producer that's slower still.
+    // 程序在启动时会给数据输入设定一个 3 秒的“耐心值”。如果在这期间没有收到任何数据，它就会停止傻等并主动发出警告。
+    // 这不仅能防止程序因为管道堵塞而无限挂起，还能帮助开发者区分“真的没数据”和“数据来得慢”，从而避免隐性的数据丢失。
     const timedOut = await peekForStdinData(process.stdin, 3000);
     process.stdin.off('data', onData);
     if (timedOut) {

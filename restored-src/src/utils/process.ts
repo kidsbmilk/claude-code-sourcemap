@@ -47,6 +47,8 @@ export function exitWithError(message: string): never {
 // unconditionally (caller's accumulator needs all chunks, not just the first).
 // Returns true on timeout, false on end. Used by -p mode to distinguish a
 // real pipe producer from an inherited-but-idle parent stdin.
+// 程序在监听输入时采用“先紧后松”的策略——刚开始时会启动一个倒计时，如果迟迟收不到第一个数据包（比如超过几秒），就判定管道无效并放弃等待；
+// 但一旦收到了第一块数据，倒计时就会立即取消，之后无论多慢，程序都会老老实实地把剩下的数据全部接收完。这种机制主要用于区分“真正的数据传输”和“闲置的继承管道”。
 export function peekForStdinData(
   stream: NodeJS.EventEmitter,
   ms: number,

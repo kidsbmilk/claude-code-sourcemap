@@ -11,12 +11,22 @@ type AppWrapperProps = {
 };
 // Ink REPL 主循环
 export async function launchRepl(root: Root, appProps: AppWrapperProps, replProps: REPLProps, renderAndRun: (root: Root, element: React.ReactNode) => Promise<void>): Promise<void> {
+  // 这两行代码使用了动态导入（await import(...)）。
+  // 这意味着它不会在程序启动时立刻加载 App 和 REPL 组件，而是等到 launchRepl 函数被调用时才去加载。
+  // 这样做的好处是可以加快初始启动速度，因为一些大的组件文件是按需加载的。
   const {
     App
   } = await import('./components/App.js');
   const {
     REPL
   } = await import('./screens/REPL.js');
+  // 这里使用了 JSX 语法来构建一个 React 组件树。
+  // 它将 REPL 组件作为 App 组件的子元素，并使用展开运算符（{...props}）将外部传入的属性（appProps 和 replProps）传递给对应的组件。
+  // 这就像搭积木一样，把整个应用的界面结构定义好了。
+
+  // 它调用了 renderAndRun 这个回调函数，并把上一步组装好的 React 组件树传给它。
+  // renderAndRun 在 interactiveHelpers.tsx 中定义，它的作用是将这个虚拟的 React 组件树“画”到真实的终端窗口（root）中，并开始处理用户的交互。
+  // 简单来说，就是让写好的界面真正显示出来并能响应用户的操作。
   await renderAndRun(root, <App {...appProps}>
       <REPL {...replProps} />
     </App>);

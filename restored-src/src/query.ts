@@ -1,5 +1,12 @@
 // 查询循环内核
 // 四级压缩流水线
+/*
+这个代码不仅仅是一个循环，它是一个精密的状态机。最值得注意的细节是它对副作用（Side Effects）的控制：
+流式处理时的回滚机制（墓碑）。
+错误恢复时的防死锁（守卫变量）。
+资源管理时的预扣费（预算追踪）。
+这些细节共同保证了系统在面对海量 Token 和复杂工具调用时，依然能保持稳定不崩。
+*/
 // biome-ignore-all assist/source/organizeImports: ANT-ONLY import markers must not be reordered
 import type {
   ToolResultBlockParam,
@@ -163,6 +170,18 @@ function* yieldMissingToolResultBlocks(
  * the rules of thinking are the rules of the universe. If ye does not heed these
  * rules, ye will be punished with an entire day of debugging and hair pulling.
  */
+/*
+“思维块”的量子态（Thinking Blocks）
+这一段关于“思维规则”的魔法注释，这揭示了 Anthropic 模型处理“思考过程”的特殊性。
+细节位置：
+代码顶部的注释块（The rules of thinking...）。
+thinkingConfig 和 stripSignatureBlocks。
+逻辑解读：
+规则：Thinking（思维）块不能是最后一个消息，必须成对出现（思考 -> 结果）。
+降级处理：如果发生了 Model Fallback（比如从支持思维的模型降级到不支持的模型），代码会强制调用 stripSignatureBlocks 删除所有思维块。
+原因：如果不删，旧的思维块签名（Signature）发给不支持该功能的模型，会导致 400 错误。
+为什么重要：这保证了在复杂的模型降级（Fallback）场景下，对话历史依然对新模型是合法的。
+*/
 const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3
 
 /**
@@ -290,6 +309,16 @@ async function* queryLoop(
   // multiple compacts: each subtracts the final context at that compact's
   // trigger point. Loop-local (not on State) to avoid touching the 7 continue
   // sites.
+  /*
+  Token “预算会计”系统
+  一个隐形的“管家”在计算花了多少钱（Token）。
+  细节位置：
+  taskBudgetRemaining 和 checkTokenBudget。
+  逻辑解读：
+  预扣费机制：在每次压缩（Autocompact）发生前，代码会计算被压缩掉的上下文有多少 Token（preCompactContext），然后从总预算中减去这部分。
+  硬性刹车：如果 checkTokenBudget 发现预算超了（action === 'continue'），它会生成一条 Meta 消息（“Token 预算已用完...”），并强制 continue 下一轮循环，或者直接返回 completed。
+  为什么重要：这是为了防止 AI 在用户不知情的情况下，把一整个月的 API 预算都用光。
+  */
   let taskBudgetRemaining: number | undefined = undefined
 
   // Snapshot immutable env/statsig/session state once at entry. See QueryConfig
@@ -400,6 +429,9 @@ async function* queryLoop(
     // what snip removed; tokenCountWithEstimation alone can't see it (reads usage
     // from the protected-tail assistant, which survives snip unchanged).
     let snipTokensFreed = 0
+    // 第一级：Snip (剪切) —— “暴力截断”
+    // 作用原理：这是最简单粗暴的一级。它不会去理解对话内容，而是直接砍掉对话历史的最前面一部分（比如最早的 N 轮对话）。
+    // 特点：速度快，不消耗 Token 计算成本，但会丢失信息。代码注释提到它是在 Microcompact 之前运行的。
     if (feature('HISTORY_SNIP')) {
       queryCheckpoint('query_snip_start')
       const snipResult = snipModule!.snipCompactIfNeeded(messagesForQuery)
@@ -413,6 +445,10 @@ async function* queryLoop(
 
     // Apply microcompact before autocompact
     queryCheckpoint('query_microcompact_start')
+    // 第二级：Microcompact (微压缩) —— “缓存清理”
+    // 作用原理：这一级主要针对缓存（Cache）。它会扫描那些被标记为可以缓存的内容（比如工具调用的结果、重复的代码块）。
+    // 如果某些缓存内容被证明是无效的，或者为了给新内容腾出空间，它会把这些旧缓存“踢”出去，只保留一个占位符。
+    // 特点：代码注释中提到 CACHED_MICROCOMPACT，说明这主要是一种维护缓存健康度的机制，防止缓存占用过多的上下文空间。
     const microcompactResult = await deps.microcompact(
       messagesForQuery,
       toolUseContext,
@@ -439,6 +475,22 @@ async function* queryLoop(
     // Within a turn, the view flows forward via state.messages at the
     // continue site (query.ts:1192), and the next projectView() no-ops
     // because the archived messages are already gone from its input.
+    // 第三级：Context Collapse (上下文折叠) —— “隐形折叠”
+    // 作用原理：这是一种“障眼法”。
+    // 它不会真的把对话内容删掉，而是将一部分历史消息在视觉上和逻辑上“折叠”起来。
+    // 对于 AI 来说，这部分内容变成了不可见的（或者只保留极少量的元数据），从而释放了 Token 空间，但用户如果需要展开，依然可以看到原始细节。
+    // 特点：可逆的。它是为了在不丢失数据的前提下，让 AI 能够专注于当前的对话轮次。
+
+    /*
+    增量式上下文折叠（Context Collapse）
+    这是一个非常高级的优化细节。
+    细节位置：
+    Context Collapse 相关逻辑。
+    逻辑解读：
+    代码注释提到：Project the collapsed context view... Summary messages live in the collapse store, not the REPL array。
+    这意味着“折叠”并不是真的把消息删了重写，而是维护了一个“提交日志（Commit Log）”。系统在读取时动态跳过被折叠的部分。
+    为什么重要：这样做的好处是无损。用户如果想“展开”看细节，系统依然有原始数据，而且这种投影（Projection）操作非常快，不消耗额外的计算资源。
+    */
     if (feature('CONTEXT_COLLAPSE') && contextCollapse) {
       const collapseResult = await contextCollapse.applyCollapsesIfNeeded(
         messagesForQuery,
@@ -453,6 +505,10 @@ async function* queryLoop(
     )
 
     queryCheckpoint('query_autocompact_start')
+    // 第四级：Autocompact (自动压缩) —— “终极总结”
+    // 作用原理：这是最后的手段，也是成本最高的一级。
+    // 当上述手段都无法解决问题时，系统会调用 AI 模型本身，让它阅读并理解一长段历史对话，然后生成一个精简的摘要（Summary）来代替原来的几千上万字的对话。
+    // 特点：保信息量最大。虽然原始细节丢失了，但核心意图被保留了下来。代码中大量的 logEvent('tengu_auto_compact_succeeded'... 都是在记录这一级的动作。
     const { compactionResult, consecutiveFailures } = await deps.autocompact(
       messagesForQuery,
       toolUseContext,
@@ -560,6 +616,18 @@ async function* queryLoop(
     let needsFollowUp = false
 
     queryCheckpoint('query_setup_start')
+    /*
+    “流式”与“批处理”的混合博弈
+    非常精妙的机制，用来处理 AI 模型“边想边说”（流式输出）和“一次性给结果”（批处理）之间的冲突。
+    细节位置：
+    useStreamingToolExecution 和 StreamingToolExecutor,
+    streamingFallbackOccured 标志位。
+    发生了什么：
+    系统默认尝试流式执行工具（一边模型输出 tool_use，一边后台执行工具）。
+    但如果模型“改口”了（比如流式传输中断，或者模型决定不调用工具了），代码里有一个 onStreamingFallback 回调。
+    关键动作：此时会触发 yield 生成“墓碑（Tombstone）”消息，把刚才流式输出的半成品 tool_use 块从界面上删掉，并重置执行器。
+    为什么重要：这是为了防止“幻觉残留”。如果模型边想边调用工具，结果最后没调用，界面必须瞬间把这些调用抹平，用户不能看到任何痕迹。
+    */
     const useStreamingToolExecution = config.gates.streamingToolExecution
     let streamingToolExecutor = useStreamingToolExecution
       ? new StreamingToolExecutor(
@@ -1118,6 +1186,15 @@ async function* queryLoop(
           }
         }
       }
+      /*
+      “硬阻断”与“软恢复”的死锁预防
+      这段代码非常小心地避免无限循环（Death Spiral）。如果处理不好，系统可能会陷入：报错 -> 试图修复（Stop Hook） -> 再次报错 的死循环。
+      逻辑解读：
+      当遇到“提示词太长（413）”或“媒体文件太大”错误时，系统会尝试用 reactiveCompact（第四级压缩）来修复。
+      防御机制：代码里有一个守卫 if (compacted)。如果 Reactive Compact 已经尝试过一次但还是报错（或者媒体文件在保留区），系统会检查 hasAttemptedReactiveCompact。
+      结果：如果已经尝试过，它会直接 yield lastMessage 把错误抛给用户，绝不再次尝试修复。
+      为什么重要：防止系统在后台疯狂压缩、报错、再压缩，直到把用户的 Token 预算烧光。
+      */
       if ((isWithheld413 || isWithheldMedia) && reactiveCompact) {
         const compacted = await reactiveCompact.tryReactiveCompact({
           hasAttempted: hasAttemptedReactiveCompact,

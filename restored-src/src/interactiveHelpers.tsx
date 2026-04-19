@@ -95,6 +95,8 @@ export function showSetupDialog<T = void>(root: Root, renderer: (done: (result: 
  * Render the main UI into the root and wait for it to exit.
  * Handles the common epilogue: start deferred prefetches, wait for exit, graceful shutdown.
  */
+// 这个函数不仅仅负责把界面画出来，它还像一个尽职的管家一样管理着程序的“一生”：启动时偷偷在后台准备资源（预取），
+// 中间一直盯着界面直到用户关闭，最后还要负责打扫卫生、保存数据，确保程序是“优雅”地结束，而不是直接崩溃或闪退。
 export async function renderAndRun(root: Root, element: React.ReactNode): Promise<void> {
   root.render(element);
   startDeferredPrefetches();
