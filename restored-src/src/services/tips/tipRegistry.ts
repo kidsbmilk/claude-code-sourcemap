@@ -360,6 +360,7 @@ const externalTips: Tip[] = [
     isRelevant: async () => getPlatform() === 'macos',
   },
   {
+    // 两次 esc 打开回退对话框
     id: 'double-esc',
     content: async () =>
       'Double-tap esc to rewind the conversation to a previous point in time',

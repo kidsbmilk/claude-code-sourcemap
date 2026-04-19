@@ -1251,6 +1251,7 @@ function PromptInput({
     trackAndSetInput(newInput);
     setCursorOffset(cursorOffset + text.length);
   }
+  // 双击 esc 打开回退对话框
   const doublePressEscFromEmpty = useDoublePress(() => {}, () => onShowMessageSelector());
 
   // Function to get the queued command for editing. Returns true if commands were popped.

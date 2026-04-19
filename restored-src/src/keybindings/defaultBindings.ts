@@ -244,6 +244,9 @@ export const DEFAULT_BINDINGS: KeybindingBlock[] = [
     },
   },
   // Message selector (rewind dialog) navigation
+  // 消息选择器（回退对话框）导航
+  // 两次 esc 跟 输入 /rewind 效果一样。
+  // services/tips/tipRegistry.ts 中有 "double-esc" 的说明，实现的地方：components/PromptInput/PromptInput.tsx 中的 doublePressEscFromEmpty
   {
     context: 'MessageSelector',
     bindings: {
